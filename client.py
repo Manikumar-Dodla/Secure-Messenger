@@ -1,10 +1,11 @@
+# ======== client.py ========
 import socket
 import threading
 import tkinter as tk
 from tkinter import scrolledtext
+import base64
 from Crypto.PublicKey import RSA
 from Crypto.Cipher import PKCS1_OAEP
-import base64
 
 HOST = '127.0.0.1'
 PORT = 8000
@@ -23,8 +24,9 @@ class ClientGUI:
 
         self.sock = None
         self.server_pub_key = None
+
         self.key_pair = RSA.generate(2048)
-        self.cipher_rsa = PKCS1_OAEP.new(self.key_pair)
+        self.client_cipher = PKCS1_OAEP.new(self.key_pair)
 
         self.start_client()
 
@@ -37,25 +39,30 @@ class ClientGUI:
             self.sock.connect((HOST, PORT))
             self.append_text("[Client] Connected to server.\n")
 
-            # Receive server's public key and send our public key
-            server_pub_key_data = self.sock.recv(4096)
-            self.server_pub_key = RSA.import_key(server_pub_key_data)
+            # Receive server public key
+            pub_key_data = self.sock.recv(2048)
+            self.server_pub_key = RSA.import_key(pub_key_data)
             self.server_cipher = PKCS1_OAEP.new(self.server_pub_key)
+
+            # Send client public key
             self.sock.send(self.key_pair.publickey().export_key())
 
             while True:
                 data = self.sock.recv(4096)
                 if not data:
+                    self.append_text("[Client] Server disconnected.\n")
                     break
-                decrypted = self.cipher_rsa.decrypt(base64.b64decode(data))
+                print(f"[Encrypted Incoming]: {data}")
+                decrypted = self.client_cipher.decrypt(base64.b64decode(data))
                 self.append_text(f"[Server]: {decrypted.decode()}\n")
         except Exception as e:
-            self.append_text(f"[Client] Error: {e}\n")
+            self.append_text(f"[Client] Error: {str(e)}\n")
 
     def send_message(self, event=None):
         msg = self.entry.get()
         if msg and self.sock and self.server_pub_key:
             encrypted = self.server_cipher.encrypt(msg.encode())
+            print(f"[Encrypted Outgoing]: {base64.b64encode(encrypted).decode()}")
             self.sock.send(base64.b64encode(encrypted))
             self.append_text(f"[You]: {msg}\n")
             self.entry.delete(0, tk.END)

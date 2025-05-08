@@ -2,9 +2,9 @@ import socket
 import threading
 import tkinter as tk
 from tkinter import scrolledtext
+import base64
 from Crypto.PublicKey import RSA
 from Crypto.Cipher import PKCS1_OAEP
-import base64
 
 HOST = '127.0.0.1'
 PORT = 8000
@@ -23,8 +23,10 @@ class ServerGUI:
 
         self.client_socket = None
         self.client_pub_key = None
+        self.cipher_rsa = None
+
         self.key_pair = RSA.generate(2048)
-        self.cipher_rsa = PKCS1_OAEP.new(self.key_pair)
+        self.server_cipher = PKCS1_OAEP.new(self.key_pair)
 
         self.start_server()
 
@@ -36,30 +38,36 @@ class ServerGUI:
         server.bind((HOST, PORT))
         server.listen(1)
         self.append_text("[Server] Listening for connections...\n")
+
         self.client_socket, addr = server.accept()
         self.append_text(f"[Server] Client connected from {addr}\n")
 
-        # Exchange public keys
+        # Send public key to client
         self.client_socket.send(self.key_pair.publickey().export_key())
-        client_pub_key_data = self.client_socket.recv(4096)
-        self.client_pub_key = RSA.import_key(client_pub_key_data)
+
+        # Receive public key from client
+        pub_key_data = self.client_socket.recv(2048)
+        self.client_pub_key = RSA.import_key(pub_key_data)
         self.client_cipher = PKCS1_OAEP.new(self.client_pub_key)
 
         while True:
             try:
                 data = self.client_socket.recv(4096)
                 if not data:
+                    self.append_text("[Server] Client disconnected.\n")
                     break
-                decrypted = self.cipher_rsa.decrypt(base64.b64decode(data))
+                print(f"[Encrypted Incoming]: {data}")
+                decrypted = self.server_cipher.decrypt(base64.b64decode(data))
                 self.append_text(f"[Client]: {decrypted.decode()}\n")
             except Exception as e:
-                self.append_text(f"[Server] Error: {e}\n")
+                self.append_text(f"[Server] Error: {str(e)}\n")
                 break
 
     def send_message(self, event=None):
         msg = self.entry.get()
         if msg and self.client_socket and self.client_pub_key:
             encrypted = self.client_cipher.encrypt(msg.encode())
+            print(f"[Encrypted Outgoing]: {base64.b64encode(encrypted).decode()}")
             self.client_socket.send(base64.b64encode(encrypted))
             self.append_text(f"[You]: {msg}\n")
             self.entry.delete(0, tk.END)
