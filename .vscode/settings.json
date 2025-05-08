@@ -1,0 +1,7 @@
+{
+    "files.associations": {
+        "encryption.h": "c",
+        "decryptor.h": "c",
+        "unistd.h": "c"
+    }
+}
